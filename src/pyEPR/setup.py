@@ -4,7 +4,8 @@ import shutil
 import yaml
 from qblox_scheduler import HardwareAgent
 
-
+AGENT = None
+QRC = None
 def load_config(file_path):
     from .datamanagement import DATA_FOLDER, METADATA
     with open(file_path, "r") as file:
@@ -20,11 +21,11 @@ def load_config(file_path):
     return config
 
 def initialize_hardware(config, hardware_config_file="./dependencies/hardware_configuration_file.json"):
-    agent = HardwareAgent(hardware_configuration=hardware_config_file)
-    agent.connect_clusters()
-
+    global AGENT, QRC
+    AGENT = HardwareAgent(hardware_configuration=hardware_config_file)
+    AGENT.connect_clusters()
     #extracting the cluster
-    cluster=agent.get_clusters()["cluster0"]
+    cluster=AGENT.get_clusters()["cluster0"]
     # cluster.reset() #reset Qblox
 
     #extracting the module by number - 16??
@@ -34,4 +35,4 @@ def initialize_hardware(config, hardware_config_file="./dependencies/hardware_co
     QRC.in0_att(config["RX"]["ATTENUATION"])
     from .datamanagement import METADATA
     METADATA.update({"misc": {"__QRC.out0_in0_lo_freq": QRC.out0_in0_lo_freq()}})  # update config metadata
-    return agent, QRC
+    return AGENT, QRC

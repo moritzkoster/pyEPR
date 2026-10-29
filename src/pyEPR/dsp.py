@@ -23,3 +23,14 @@ def gaussian(f, center, bandwidth):
     returns mask between 0 and 1
     """
     return np.exp(-0.5 * ((f - center) / (bandwidth / 2)) ** 2)
+
+def exp_fit(x, y, a=1., b=1., c=0.)-> dict:
+    """
+    Fit an exponential function to the data (x, y) using curve_fit.
+    Returns a dictionary with the fitted parameters and their covariance.
+    """
+    from scipy.optimize import curve_fit
+    def exp_func(x, a, b, c):
+        return a * np.exp(-x/b) + c
+    popt, pcov = curve_fit(exp_func, x, y, p0=[a, b, c])
+    return {"a": popt[0], "b": popt[1], "c": popt[2], "cov": pcov}

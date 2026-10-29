@@ -90,6 +90,8 @@ def plot_signal(signal:Signal, axs=None, show=True, components="RIM", bandpass=N
 def plot_sequence(config, **kwargs):
     if config["SEQUENCE"] == "ECHO":
         plot_echo_sequence(config, **kwargs)
+    elif config["SEQUENCE"] == "SR_ECHO":
+        plot_sr_echo_sequence(config, **kwargs)
     else:
         raise ValueError(f"Unsupported sequence: {config['SEQUENCE']}")
 
@@ -139,3 +141,12 @@ def plot_echo_sequence(config, show=True):
     axs[0].set_ylabel("Amplitude")
     if show:
         plt.show()
+
+def plot_sr_echo_sequence(config,  show=True):
+    from .sequences import sr_echo_schedule
+    from .setup import AGENT
+
+    schedule = sr_echo_schedule(config)
+    comp_schedule = AGENT.compile(schedule)
+    df = comp_schedule.timing_table.data
+    print(df.columns)

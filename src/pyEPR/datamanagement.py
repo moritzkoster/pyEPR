@@ -121,7 +121,7 @@ def load_v2(filename):
     metadata["misc"]["filename"] = filename.split(os.sep)[-1]
     return Signal(data, metadata)
 
-def load_folder(folder, name="*.epr"): # also can use *.hdf5
+def load_folder(folder, name="*.epr") -> list[Signal]: # also can use *.hdf5
     import glob
 
     data_files = glob.glob(os.path.join(folder, name))
