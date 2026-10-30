@@ -37,15 +37,17 @@ def run_schedule(schedule: Schedule, agent: HardwareAgent): # unused
     return Signal(acq[0].values[0], None)
 
 def run_config(config, agent: HardwareAgent):
-    if config["SEQUENCE"] == "ECHO":
+    if config["SEQUENCE"] == "JUST_ACQUIRE":
+        return just_acquire(config, agent)
+    elif config["SEQUENCE"] == "PULSE_ACQUIRE":
+        return pulse_acquire(config, agent)
+    elif config["SEQUENCE"] == "ECHO":
         return echo(config, agent)
-    if config["SEQUENCE"] == "SR_ECHO":
+    elif config["SEQUENCE"] == "SR_ECHO":
         return sr_echo(config, agent)
     elif config["SEQUENCE"] == "CPMG":
         raise ValueError(f"Unknown sequence: {config['SEQUENCE']}")
         return cpmg(config)
-    elif config["SEQUENCE"] == "JUST_ACQUIRE":
-        return just_acquire(config, agent)
     else:
         raise ValueError(f"Unknown sequence: {config['SEQUENCE']}")
 
@@ -496,6 +498,133 @@ def sr_echo_timings(config):
     timestamps["t_tx_gate_off"]   = timestamps["t_tx_gate_on"]    + d_tx_gate_on
     timestamps["t_rx_gate_on"]    = timestamps["t_tx_gate_off"]   + d_txgateoff_rxgateon
     timestamps["t_acq_start"]     = timestamps["t_p2_start"]      + config["TIMING"]["PULSE_DURATION_2"] + d_p2_acq
+    timestamps["t_acq_end"]       = timestamps["t_acq_start"]     + config["ACQ"]["DURATION"]
+
+    sequence_params.update(timestamps)
+    return sequence_params
+
+def pulse_acquire(config, agent: HardwareAgent):
+    schedule = pulse_acquire_schedule(config)
+    acq = agent.run(schedule)
+    from .datamanagement import METADATA
+    METADATA.update({"created": time.strftime("%Y-%m-%d %H:%M:%S")})
+    return Signal(acq[0].values[0], METADATA)
+
+def pulse_acquire_schedule(config):
+    schedule = Schedule(name="Quantum Rocks")
+
+    # We can add a clock with the frequency for NCO.
+    # set the clock frequency
+    schedule.add_resource(ClockResource(name="q1.ro", freq=config["TX"]["FREQ"]))
+    schedule.add_resource(ClockResource(name="q6.ro", freq=1.6e9))
+
+    sequence_params = pulse_acquire_timings(config)  # calculate timings and update config
+
+
+    d_tx_gate_on = sequence_params["d_tx_gate_on"]
+    d_p_acq = sequence_params["d_p_acq"]
+    d_txgateoff_rxgateon = sequence_params["d_txgateoff_rxgateon"]
+    d_rx_gate_on = sequence_params["d_rx_gate_on"]
+    d_p_rf6on = sequence_params["d_p_rf6on"]
+
+    print(f"Total time the receiver gate is on: {d_rx_gate_on * 1e9:.1f} ns")
+    print(f"Time from amp gate off to rec gate on: {d_txgateoff_rxgateon * 1e9:.1f} ns")
+    print(f"Time from pulse 2 to RF6 (delay of RX_GATE_SYNC) on: {d_p_rf6on * 1e9:.1f} ns")
+    print(f"Time from pulse 2 to acquisition: {d_p_acq * 1e9:.1f} ns")
+    print(f"Total time the amplifier gate is on: {d_tx_gate_on * 1e9:.1f} ns")
+
+    with (
+        schedule.loop(arange(0, config["SCANS"], 1, dtype=DType.NUMBER)),
+        schedule.loop(arange(0, 360, 180, dtype=DType.PHASE)) as phase1,
+    ):  # exc and rx does [0, 180]
+
+        # reset clock phase at the start
+        rst = schedule.add(ResetClockPhase(clock="q1.ro"))
+        first_idle = schedule.add(IdlePulse(duration=4e-9), ref_op=rst, rel_time=4e-9)
+
+        amp_gate = schedule.add(
+            MarkerPulse(duration=d_tx_gate_on, port="q1:ttl", clock="q1.ro"),
+            ref_op=first_idle,
+            rel_time=3e-9,
+        )  # rel time to get the RF and marker synced rel. to idle
+
+
+        # Pulse 1
+        pulse = schedule.add(
+            SoftSquarePulse(
+                amplitude=config["TX"]["AMPLITUDE"],
+                duration=config["TIMING"]["PULSE_DURATION"],
+                port="q1:res",
+                clock="q1.ro",
+            ),
+            ref_op=first_idle,
+            rel_time=config["TIMING"]["TX_GATE_LEAD"]
+        )
+
+        rec_gate = schedule.add(
+            SquarePulse(
+                amplitude=0.9, duration=d_rx_gate_on, port="q6:res", clock="q6.ro"
+            ),
+            ref_op=pulse,  # time this event relative to excitation pulse named exc
+            rel_time=d_p_rf6on,
+        )
+
+        schedule.add(
+            Trace(duration=config["ACQ"]["DURATION"], port="q1:res", clock="q1.ro"),
+            ref_op=pulse,
+            rel_time=d_p_acq,
+        )
+
+        schedule.add(
+            IdlePulse(duration=config["TIMING"]["LAST_DELAY"])
+        )  # wait rep_time after pulse sequence
+
+    from .datamanagement import METADATA
+    METADATA.update({"sequence_params": sequence_params})
+    return schedule
+    raise NotImplementedError("Pulse Acquire schedule is not implemented yet.")
+
+def pulse_acquire_timings(config):
+    d_tx_gate_on = (
+        config["TIMING"]["TX_GATE_LEAD"]
+        + config["TIMING"]["PULSE_DURATION"]
+        + config["TIMING"]["TX_GATE_TRAIL"]
+    )  # total time the gate is on
+    d_p_acq = (
+        config["TIMING"]["TX_GATE_TRAIL"]+
+        config["TIMING"]["DEAD"] +
+        config["TIMING"]["RX_GATE_LEAD"]
+    )
+    d_txgateoff_rxgateon = (
+       config["TIMING"]["DEAD"]
+    )  # time from amp gate off to rec gate on
+
+    d_rx_gate_on = (
+        config["TIMING"]["RX_GATE_LEAD"]
+        + config["ACQ"]["DURATION"]
+        + config["TIMING"]["RX_GATE_TRAIL"]
+    )  # total time the gate is on
+
+    d_p_rf6on = (
+        d_p_acq - config["TIMING"]["RX_GATE_LEAD"] - config["TIMING"]["RX_GATE_SYNC"]
+    )  # time from pulse 2 to rec gate on
+
+
+    sequence_params = {
+        "d_tx_gate_on": d_tx_gate_on,
+        "d_p_acq": d_p_acq,
+        "d_txgateoff_rxgateon": d_txgateoff_rxgateon,
+        "d_rx_gate_on": d_rx_gate_on,
+        "d_p_rf6on": d_p_rf6on,
+    }
+
+    start = 15e-9
+    timestamps = {}
+    timestamps["t_tx_gate_on"]    = start
+    timestamps["t_p_start"]       = timestamps["t_tx_gate_on"]    + config["TIMING"]["TX_GATE_LEAD"]
+    timestamps["t_tx_gate_off"]   = timestamps["t_tx_gate_on"]    + d_tx_gate_on
+    timestamps["t_rx_gate_on"]    = timestamps["t_tx_gate_off"]   + d_txgateoff_rxgateon
+    timestamps["t_acq_start"]     = timestamps["t_p_start"]       + config["TIMING"]["PULSE_DURATION"] + d_p_acq
     timestamps["t_acq_end"]       = timestamps["t_acq_start"]     + config["ACQ"]["DURATION"]
 
     sequence_params.update(timestamps)

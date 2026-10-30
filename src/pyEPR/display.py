@@ -58,7 +58,7 @@ def autosave():
             fig.savefig(f"{PATH_CURRENT}/{FILENAME}_{chr(65 + fi)}.pgf", dpi=300)
             fig.savefig(f"{PATH_CURRENT}/{FILENAME}_{chr(65 + fi)}.png", dpi=300)
 
-def plot_signal(signal:Signal, axs=None, show=True, components="RIM", bandpass=None):
+def plot_signal(signal:Signal, axs=None, show=True, components="RIM", bandpass=None, title=None):
 
     if components == "all":
         components = "RIM"
@@ -82,7 +82,10 @@ def plot_signal(signal:Signal, axs=None, show=True, components="RIM", bandpass=N
     axs[1].set_xlabel("Offset Frequency (MHz)")
     axs[1].legend(loc="upper left")
 
-    axs[1].set_xlim([-50, 50])
+    axs[1].set_xlim([-100, 100])
+
+    if title:
+        fig.suptitle(title)
 
     if show:
         plt.show()
