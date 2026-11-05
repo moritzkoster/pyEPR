@@ -44,6 +44,8 @@ def autosave():
         with open(f"{PATH_HISTORY}/{FILENAME}_{i}.py", "a") as f:
             f.write(f"\n\n# {sys.argv}\n")
 
+        plt.tight_layout()
+
         if len(fignums) == 1:
             fig = plt.gcf()
             fig.savefig(f"{PATH_HISTORY}/{FILENAME}_{i}.pgf", dpi=300)

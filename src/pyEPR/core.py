@@ -30,6 +30,36 @@ class Signal:
         self.data = np.fft.ifft(np.fft.ifftshift(self.spec))
         self.__spec()
 
+    def slice(self, start=None, end=None, domain="t", inplace=True):
+        if domain == "time" or domain == "t":
+            self.slice_time(start, end, inplace=inplace)
+        elif domain == "frequency" or domain == "f" or domain == "freq":
+            self.slice_frequency(start, end, inplace=inplace)
+        else:
+            raise ValueError("Domain must be 't' or 'f'.")
+
+    def slice_time(self, start, end, inplace=True):
+        if not inplace:
+            raise NotImplementedError("Non-inplace slicing is not implemented for time domain.")
+        if start is None:
+            start = self.t[0]
+        if end is None:
+            end = self.t[-1]
+        self.data = self.data[(self.t >= start) & (self.t <= end)]
+        self.t = self.t[(self.t >= start) & (self.t <= end)]
+        self.__spec()
+
+    def slice_frequency(self, start, end, inplace=True):
+        if not inplace:
+            raise NotImplementedError("Non-inplace slicing is not implemented for frequency domain.")
+        if start is None:
+            start = self.t[0]
+        if end is None:
+            end = self.t[-1]
+        self.spec = self.spec[(self.f >= start) & (self.f <= end)]
+        self.f = self.f[(self.f >= start) & (self.f <= end)]
+        self.__spec()
+
     def default_preprocessing(self):
         self.remove_dc()
         self.apply_bandpass(center=0, bandwidth=200e6, transition=10e6)

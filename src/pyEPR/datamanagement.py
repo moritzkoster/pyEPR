@@ -118,6 +118,8 @@ def load_v2(filename):
         metadata = d["metadata"]
         data_hex = d["data"]
         data = np.frombuffer(bytes.fromhex(data_hex), dtype=np.complex128)
+    if "misc" not in metadata:
+        metadata["misc"] = {}
     metadata["misc"]["filename"] = filename.split(os.sep)[-1]
     return Signal(data, metadata)
 
